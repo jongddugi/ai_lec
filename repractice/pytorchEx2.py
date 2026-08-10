@@ -18,4 +18,6 @@ print(t4+t1)
 print()
 #브로드 캐스팅 연산으로 진행
 
-t5
+t5 = torch.linspace(0, 3, 10)
+print(t5)
+print(0)
