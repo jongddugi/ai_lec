@@ -114,27 +114,48 @@ class SimpleMultiHeadAttention(nn.Module):
         # [batch, sequence, head, head_dim]
 
 
+        # ----------------------------------------------------
+        # Head를 앞으로 이동
+        # ----------------------------------------------------
+
+        Q = Q.transpose(1,2) #1번 2번 바꾸기 batch :0, sequence : 1, head : 2 ;;;
+        K = K.transpose(1,2) 
+        V = V.transpose(1,2) 
+
+        # ----------------------------------------------------
+        # key의 마지막 두 차원 교환
+        # ----------------------------------------------------
+
+        K_T = K.transpose(
+            -2,
+            -1,
+        )
+
 
         # ----------------------------------------------------
         # 2. Q와 K의 유사도 계산
         # ----------------------------------------------------
 
         attention_score = (
-            Q @ K.T
+            Q @ K_T
         )
+
+        # [batch, sequence, head, head_dim]
+
 
 
         # ----------------------------------------------------
         # 3. Scaling
         # ----------------------------------------------------
 
-        d_k = Q.shape[-1]
+
+
+
 
         scaled_score = (
             attention_score
-            / (d_k ** 0.5)
+            / (self.head_dim ** 0.5)
         )
-
 
         # ----------------------------------------------------
         # 4. Softmax
@@ -147,13 +168,37 @@ class SimpleMultiHeadAttention(nn.Module):
 
 
         # ----------------------------------------------------
-        # 5. Value 결합
+        # 5. 각 Head의 Attention 결과
         # ----------------------------------------------------
 
         output = (
             attention_weights @ V
         )
 
+        #[batch, head, sequence, head_dim]
+
+
+        # ----------------------------------------------------
+        # Head 위치를 다시 원래대로 이동
+        # ----------------------------------------------------
+        
+        head_output = output.transpose(1,2)
+
+
+        #[batch, sequence, head, head_dim]
+
+
+        # ----------------------------------------------------
+        # 여러 Head를 하나로 합치기
+        # ----------------------------------------------------
+
+        concat_output = head_output.reshape(
+            batch_size, sequence_length, self.embedding_dim
+        )
+
+        #[batch, sequence, embedding]
+
+        output = self.output_linear(concat_output)
 
         return (
             output,
@@ -161,6 +206,8 @@ class SimpleMultiHeadAttention(nn.Module):
             Q,
             K,
             V,
+            head_output,
+            concat_output
         )
 
 
@@ -175,13 +222,18 @@ words = [
 ]
 
 
+
+sentence =  [
+            [1.0, 0.0, 1.0, 0.0],   # 나는
+            [0.0, 2.0, 0.0, 2.0],   # 사과를
+            [1.0, 1.0, 1.0, 1.0],   # 먹는다
+            ]
+    
 X = torch.tensor(
     [
-        [1.0, 0.0, 1.0, 0.0],   # 나는
-        [0.0, 2.0, 0.0, 2.0],   # 사과를
-        [1.0, 1.0, 1.0, 1.0],   # 먹는다
+        sentence
     ],
-    dtype=torch.float32,
+    dtype = torch.float32
 )
 
 
@@ -203,15 +255,17 @@ print(
 
 torch.manual_seed(42)
 
-embedding_dim = X.shape[-1]
+embedding_dim = 4
+num_heads = 2
 
-attention = SimpleSelfAttention(
+model = SimpleMultiHeadAttention(
     embedding_dim=embedding_dim,
+    num_heads = num_heads
 )
 
 
 # ============================================================
-# 4. Self-Attention 실행
+# 4. 실행
 # ============================================================
 
 (
@@ -220,7 +274,9 @@ attention = SimpleSelfAttention(
     Q,
     K,
     V,
-) = attention(X)
+    head_output,
+    concat_output
+) = model(X)
 
 
 # ============================================================
@@ -265,6 +321,26 @@ print("Attention Weights")
 print("=" * 60)
 
 print(attention_weights)
+print(f'attention weight shape: {attention_weights.shape}')
+
+# ============================================================
+# Head별 결과
+# ============================================================
+print("\n" + "=" * 60)
+print('Head output')
+print("=" * 60)
+print(head_output)
+print(f'attention weight shape: {head_output.shape}')
+
+# ============================================================
+# Head별 결과
+# ============================================================
+print("\n" + "=" * 60)
+print('Head output')
+print("=" * 60)
+print(concat_output)
+print(f'concat_output shape: {concat_output.shape}')
+
 
 
 # ============================================================
@@ -285,40 +361,8 @@ print(
 # ============================================================
 
 print("\n" + "=" * 60)
-print("Self-Attention Output")
+print("final output")
 print("=" * 60)
-
 print(output)
+print(f'final output shape: {output.shape}')
 
-print(
-    "\nOutput shape:",
-    output.shape,
-)
-
-
-# ============================================================
-# 11. 단어별 Attention 확인
-# ============================================================
-
-print("\n" + "=" * 60)
-print("단어별 Attention")
-print("=" * 60)
-
-
-for i, query_word in enumerate(words):
-
-    print(
-        f"\n[{query_word}]가 참고하는 단어"
-    )
-
-    for j, key_word in enumerate(words):
-
-        weight = attention_weights[
-            i,
-            j,
-        ].item()
-
-        print(
-            f"{key_word:6s} : "
-            f"{weight:.4f}"
-        )
